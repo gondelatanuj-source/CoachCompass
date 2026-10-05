@@ -1,0 +1,14 @@
+# Android / Gradle
+.gradle/
+.kotlin/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+
+# The APK is published as a GitHub Release asset
+*.apk
+
+.DS_Store
+node_modules/

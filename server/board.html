@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoachCompass Board</title>
+<style>
+  :root { --bg:#0F0B1E; --card:#1B1530; --card2:#261E42; --purple:#A46CF0; --green:#3DDC97; --amber:#FFB547; --red:#FF5A5F; --text:#F3F0FA; --muted:#A49DBA; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 40px; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .line { display: inline-block; background: var(--purple); color: #000; font-weight: 700; padding: 2px 10px; border-radius: 6px; font-size: 14px; }
+  h1 { margin: 8px 0 0; font-size: clamp(28px, 4vw, 44px); }
+  .sub { color: var(--muted); }
+  .eta { text-align: right; }
+  .eta b { display: block; font-size: clamp(40px, 7vw, 80px); line-height: 1; font-variant-numeric: tabular-nums; }
+  .train { margin-top: 28px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .coach { background: var(--card2); border-radius: 16px; overflow: hidden; position: relative; height: 240px; border: 3px solid transparent; }
+  .coach.best { border-color: var(--text); }
+  .fill { position: absolute; left: 0; right: 0; bottom: 0; transition: height .6s, background .6s; }
+  .coach .in { position: relative; padding: 14px; height: 100%; display: flex; flex-direction: column; }
+  .pct { font-size: clamp(26px, 4vw, 44px); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .tag { font-size: 12px; font-weight: 700; letter-spacing: .05em; }
+  .name { margin-top: auto; font-weight: 600; }
+  .ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .msg { margin-top: 22px; background: var(--card); border-radius: 16px; padding: 18px 22px; font-size: clamp(18px, 2.4vw, 26px); }
+  .msg b { color: var(--green); }
+  details { margin-top: 28px; background: var(--card); border-radius: 16px; padding: 16px 20px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .ops { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-top: 14px; }
+  .op label { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--purple); }
+  button { background: var(--card2); color: var(--text); border: 0; border-radius: 10px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  button:hover { background: var(--purple); color: #000; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; color: var(--muted); font-size: 14px; }
+  code { background: var(--card2); padding: 2px 8px; border-radius: 6px; color: var(--text); }
+  @media (max-width: 640px) {
+    main { padding: 16px; }
+    .train { grid-template-columns: repeat(3, 1fr); }
+    .coach { height: 150px; }
+    .tag { display: none; }
+    .eta { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="line">Purple Line</span>
+      <h1 id="title">Trinity · Platform 2</h1>
+      <div class="sub" id="sub">Next train towards Whitefield</div>
+    </div>
+    <div class="eta"><span class="sub" id="etaLabel">Arrives in</span><b id="eta">–:––</b></div>
+  </header>
+
+  <div class="train" id="train"></div>
+  <div class="ends"><span>◀ Front</span><span>Rear</span></div>
+
+  <div class="msg" id="msg">Connecting…</div>
+
+  <details>
+    <summary>Operator controls</summary>
+    <div class="sub" style="margin-top:8px;font-size:14px">Set a coach's load by hand when no phone in it is reporting. Live phone reports always win.</div>
+    <div class="ops" id="ops"></div>
+    <div class="row">
+      <button id="reset">Reset demo (new train, clear reports)</button>
+      <span>Phones: type <code id="ip">…</code> in the app's server box.</span>
+    </div>
+  </details>
+</main>
+<script>
+const color = l => l < 50 ? 'var(--green)' : l < 75 ? 'var(--amber)' : 'var(--red)';
+const label = l => l < 50 ? 'Plenty of space' : l < 75 ? 'Some space' : 'Crowded';
+const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const train = document.getElementById('train'), ops = document.getElementById('ops');
+const post = (u, b) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+
+for (let n = 1; n <= 6; n++) {
+  train.insertAdjacentHTML('beforeend', `<div class="coach" id="c${n}"><div class="fill"></div><div class="in"><span class="pct"></span><span class="tag"></span><span class="name">Coach ${n}${n === 1 ? ' · Women' : ''}</span></div></div>`);
+  ops.insertAdjacentHTML('beforeend', `<div class="op"><label><span>Coach ${n}</span><span id="ov${n}">auto</span></label><input type="range" min="0" max="100" value="50" id="r${n}"><button data-clear="${n}" style="padding:4px 10px;font-size:13px">Auto</button></div>`);
+  const r = document.getElementById('r' + n);
+  r.addEventListener('change', () => post('/api/override', { coach: n, load: Number(r.value) }));
+  r.addEventListener('input', () => (document.getElementById('ov' + n).textContent = r.value + '%'));
+}
+ops.addEventListener('click', e => { const n = e.target.dataset.clear; if (n) post('/api/override', { coach: Number(n), load: null }); });
+document.getElementById('reset').onclick = () => post('/api/reset', {});
+fetch('/api/info').then(r => r.json()).then(i => (document.getElementById('ip').textContent = i.ips[0] || 'this laptop\'s IP')).catch(() => {});
+
+async function tick() {
+  try {
+    const s = await (await fetch('/api/state')).json();
+    document.getElementById('title').textContent = `${s.station} · Platform ${s.platform}`;
+    document.getElementById('sub').textContent = `Next train ${s.train} towards ${s.towards}`;
+    document.getElementById('etaLabel').textContent = s.phase === 'boarding' ? 'Now' : 'Arrives in';
+    document.getElementById('eta').textContent = s.phase === 'boarding' ? 'Boarding' : mmss(s.etaSec);
+    const general = s.coaches.filter(c => c.n !== 1);
+    const best = general.reduce((a, b) => (b.load < a.load ? b : a));
+    for (const c of s.coaches) {
+      const el = document.getElementById('c' + c.n);
+      el.classList.toggle('best', c.n === best.n);
+      el.querySelector('.fill').style.height = c.load + '%';
+      el.querySelector('.fill').style.background = color(c.load);
+      el.querySelector('.pct').textContent = c.load + '%';
+      el.querySelector('.tag').textContent = c.source === 'live' ? `LIVE · ${c.phones} phone${c.phones > 1 ? 's' : ''}` : c.source === 'operator' ? 'OPERATOR' : label(c.load).toUpperCase();
+      document.getElementById('ov' + c.n).textContent = c.source === 'operator' ? c.load + '%' : c.source;
+    }
+    document.getElementById('msg').innerHTML = `Most space: <b>Coach ${best.n}</b> (${best.load}% full). Spread out along the platform for a faster, more comfortable ride.`;
+  } catch {
+    document.getElementById('msg').textContent = 'Lost connection to the server. Is node server.js still running?';
+  }
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
